@@ -1,0 +1,91 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <style>
+        body{
+            padding: 0;
+            margin: 0;
+        }
+        h2{
+            color: green;
+        }
+        .content{
+            display: flex;
+            width: 600px;
+            height: 400px;
+            margin: 40px auto;
+            border-radius: 10%;
+            background-color: #efefef;
+            justify-content: space-around;
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .submit{
+            padding: 5px 10px;
+        }
+
+        label{
+            font-size: 18px;
+        }
+
+        h2{
+            font-size: 28px;
+        }
+
+        .line{
+            border: 0.1px solid #000;
+            width: 60%;
+            margin: 0 auto;
+        }
+
+
+    </style>
+    <title>home</title>
+</head>
+<body>
+    <form class="content" action="" method="post" enctype="multipart/form-data">
+        <h2>Small Target Motion Detectors</h2>
+        <div class="line"></div>
+        {% csrf_token %}
+
+        <div>
+            <label for="model">Choose a model :</label>
+            <select name="model" id="model">
+                <optgroup label="Standard models">
+                    <option value="bs">Background Subtraction</option>
+                    <option value="dof">dense Optical Flow</option>
+                    <option value="sof">sparse Optical Flow</option>
+                    <option value="fd">Frame Differencing</option>
+                    <option value="td">Temporal Differencing</option>
+                    <option value="infrared">Infrared</option>
+                </optgroup>
+                <optgroup label="Bio-inspired models">
+                    <option value="dstmd">ESTMD</option>
+                    <option value="fstmd">FSTMD</option>
+                    <option value="dstmd">DSTMD</option>
+                </optgroup>
+            </select>
+        </div>
+
+        <div>
+            <label for="vid">Choose a video :</label>
+            <input id="vid" type="file" accept="video/*" name="video">
+        </div>
+        <div>
+            <label for="camera">Choose a video :</label>
+            <input id="camera" type="number" name="number">
+        </div>
+
+        <div>
+            <input class="submit" type="submit">
+        </div>
+
+    </form>
+</body>
+</html>
