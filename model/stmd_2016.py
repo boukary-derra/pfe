@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 
 
-#  tools
+#  TOOLS
 def low_pass(img, l, tau):
     (m, n) = img.shape
     for (i, j) in itertools.product(range(m), range(n)):
@@ -19,30 +19,56 @@ def low_pass(img, l, tau):
         return a
 
 
-# =========Retine layer=======================================================
+# =========================== Retine layer======================================
+# photoreceptor
 def photoreceptor(gray_img):
-    w = np.array([1/16, 1/8, 1/16, 1/8, 1/4, 1/8, 1/16, 1/8, 1/16]).reshape(3, 3)
-    result = np.zeros(gray_img.shape)
-    (m, n) = gray_img.shape
-    for (i, j) in itertools.product(range(m), range(n)):
+    """Input: Gray style image (matrix)
+    Goal: Apply a blur effect to the input image"""
+
+    w = np.array([1/16, 1/8, 1/16, 1/8, 1/4, 1/8, 1/16, 1/8, 1/16]).reshape(3, 3) # -> Gaussian convolution mask
+    (m, n) = gray_img.shape # -> input matrix size (m: with, n: height)
+    output = np.zeros((m, n)) # -> output initialization (null matrix with the same size as the input)
+
+    for (i, j) in itertools.product(range(m), range(n)): # -> iterate through all the elements of the input matrix
         l = 0
-        for v in [-1, 0, 1]:
-            for u in [-1, 0, 1]:
+        for v in [-1, 0, 1]: # -> sum of v from -1 to 1
+            for u in [-1, 0, 1]: # -> sum of u from -1 to 1
                 try:
-                    l += w[u, v] * gray_img[i+u, j+v]
+                    l += w[u, v] * gray_img[i+u, j+v] # photoreceptor operation: doc [1] eq [1]
                 except: pass
-        result[i, j] = l #uint8
-    # result = np.array(result).reshape(self.frame.shape)
-    result = result.astype(np.uint8)
-    return result
+        output[i, j] = l # -> fill output matrix element by element
 
-eq1 = low_pass(tau = tau1)
+    output  = output .astype(np.uint8) # -> convert output to np.uint8
+    return output  # -> return the output
+
+# Lipetz transformation
+    "pass"
 
 
- #=====Lamina layer===============================================================
+# =========================== Lamina layer======================================
 # low pass filter
-eq2 = low_pass(tau = tau2)
-# High Pass Filter (LMCs)
-eq3 = low_pass(tau=tau3)
+    "pass"
 
-# =========Medulla layer=======================================================
+# High Pass Filter (LMCs)
+    "pass"
+
+
+# =========================== Medulla layer=====================================
+# FDSR (ON)
+    "pass"
+
+# FDSR (OFF)
+    "pass"
+
+
+# =========================== Lobula layer======================================
+    "pass"
+
+
+
+
+# =========================== Documentation ====================================
+"""
+[1] H.  Wang, J Peng and S.  Yue, “Bio-inspired Small Target Motion Detector with a new Lateral Inhibition Mechanism,”
+Conference Paper - July 2016.
+"""
