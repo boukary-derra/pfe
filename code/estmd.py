@@ -67,7 +67,8 @@ class ESTMD:
                 buffer_frame[i, j] = l
 
             # convert output elements to np.uint8
-            self.frame  = buffer_frame.astype(np.uint8)
+            self.frame  = buffer_frame
+
             cv2.imshow("1. Photoreceptor frame", self.frame)
         except Exception as e:
             print("Error in Retina layer / photoreceptor :", e)
@@ -86,9 +87,9 @@ class ESTMD:
                 # equation [3]
                 p = l**self.u/(l**self.u + lc**self.u)
                 # Normalisation pour que le frame soit observable
-                p = p*(255**(1/self.u))
                 buffer_frame[i, j] = p
-            self.frame  = buffer_frame.astype(np.uint8)
+            self.frame  = buffer_frame
+
             cv2.imshow("2. Lipetz transformation", self.frame)
 
         except Exception as e:
@@ -108,16 +109,18 @@ class ESTMD:
                 # equation [5]
                 x = self.get_equa_diff_solution(p, self.t, self.tau_2, self.const_2)
                 buffer_frame[i, j] = x
-            self.frame  = buffer_frame.astype(np.uint8)
+            self.frame  = buffer_frame
+
             cv2.imshow("3. Low pass filter", self.frame)
 
         except Exception as e:
             print("Error in Lamina layer / low pass filter :", e)
 
     def high_pass_filter(self):
-        """ Remove redundant information; Maximize information transmission """
+        """ (LMCs) Remove redundant information; Maximize information transmission """
         self.low_pass_filter()
         (m, n) = self.get_shape()
+
 
         try:
             y_lmc_buffer = np.zeros((m, n))
@@ -131,17 +134,19 @@ class ESTMD:
 
                 # equation [7]
                 y_lmc = x - x_lmc
+
                 y_lmc_buffer[i, j] = y_lmc
 
                 # equation [8]
                 y_on_buffer[i, j] = (y_lmc + abs(y_lmc))/2
 
                 # equation [9]
-                off_buffer[i, j] = (y_lmc - abs(y_lmc))/2
+                y_off_buffer[i, j] = (y_lmc - abs(y_lmc))/2
 
-            self.y_lmc  = y_lmc_buffer.astype(np.uint8)
-            self.y_on = y_on_buffer.astype(np.uint8)
-            self.y_off = y_off_buffer.astype(np.uint8)
+
+            self.y_lmc  = y_lmc_buffer
+            self.y_on = y_on_buffer
+            self.y_off = y_off_buffer
 
         except Exception as e:
             print("Error in Lamina layer / high pass filter :", e)
@@ -155,7 +160,8 @@ class ESTMD:
         """ The FDSR mechanism is able to suppress rapidly changed texture
         information and enhance noval contrast change """
 
-        (pre_y_on, pre_y_off) = ESTMD(self.pre_frame, t-1).FDSR()
+        (pre_y_on, pre_y_off) = ESTMD(self.pre_frame, t-1).high_pass_filter()
+
         self.high_pass_filter()
         (m, n) = self.get_shape()
 
@@ -166,7 +172,7 @@ class ESTMD:
 
                 y_on = self.y_on[i, j]
                 # equation [10]
-                if y_on > pre_y_on:
+                if y_on > pre_y_on[i, j]:
                     s_on = self.get_equa_diff_solution(y_on, self.t, self.tau_fast, self.const_4)
                 else:
                     s_on = self.get_equa_diff_solution(y_on, self.t, self.tau_slow, self.const_4)
@@ -174,15 +180,15 @@ class ESTMD:
 
                 y_off = self.y_off[i, j]
                 # equation [11]
-                if y_off > pre_y_off:
+                if y_off > pre_y_off[i, j]:
                     s_off = self.get_equa_diff_solution(y_off, self.t, self.tau_fast, self.const_4)
                 else:
                     s_off = self.get_equa_diff_solution(y_off, self.t, self.tau_slow, self.const_4)
                 s_off_buffer[i, j] = s_off
 
 
-            self.s_on = s_on_buffer.astype(np.uint8)
-            self.s_off = s_on_buffer.astype(np.uint8)
+            self.s_on = s_on_buffer
+            self.s_off = s_on_buffer
 
         except Exception as e:
             print("Error in Medulla layer / FDSR :", e)
@@ -200,16 +206,16 @@ class ESTMD:
 
                 y_on = self.y_on[i, j]
                 s_on = self.s_on[i, j]
-                # equation [12]
+                # equations [12] and [14]
                 f_on_buffer[i, j] = max(0, y_on - s_on)
 
                 y_off = self.y_off[i, j]
                 s_off = self.s_off[i, j]
-                # equation [13]
+                # equations [13] [15]
                 f_off_buffer[i, j] = max(0, y_off - s_off)
 
-            self.f_on = f_on_buffer.astype(np.uint8)
-            self.f_off = f_off_buffer.astype(np.uint8)
+            self.f_on = f_on_buffer
+            self.f_off = f_off_buffer
 
         except Exception as e:
             print("Error in Medulla layer / Sigma or HW-R :", e)
@@ -258,7 +264,7 @@ class ESTMD:
                 # equation [29]
                 output = self.f_on[i, j]*self.f_off[i, j]
                 buffer[i, j] = output
-            self.output = buffer.astype(np.uint8)
+            self.output = buffer
             cv2.imshow("Final output", self.output)
         except Exception as e:
             print("Error in Lobula Layer / final output :", e)
