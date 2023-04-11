@@ -3,7 +3,7 @@ from estmd import ESTMD
 
 img = cv2.imread("media/image2.jpg")
 
-img = ESTMD(img)
+img = ESTMD(img, img)
 
 img.high_pass_filter()
 

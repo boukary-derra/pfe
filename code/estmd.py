@@ -7,8 +7,9 @@ import cv2
 
 
 class ESTMD:
-    def __init__(self, frame, t=1):
+    def __init__(self, pre_frame, frame, t=1):
         # Convert input frame to Gray Syle
+        self.pre_frame = pre_frame
         self.t = t
         cv2.imshow("Real frame", frame)
         self.frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -18,11 +19,15 @@ class ESTMD:
         self.tau_1 = 3
         self.tau_2 = 3
         self.tau_3 = 3
+        self.tau_fast = 3
+        self.tau_slow = 3
+        self.tau_5 = 3
         self.const_1 = 5
         self.const_2 = 12
         self.const_3 = 8
-        self.on_channel = np.zeros(self.get_shape())
-        self.off_channel = np.zeros(self.get_shape())
+        self.const_4 = 12
+        self.const_5 = 8
+
 
 
     """ =============================== TOOLS =============================="""
@@ -32,7 +37,7 @@ class ESTMD:
 
     def get_equa_diff_solution(self, input, t, tau, const):
         """ Solutions of the equation [4, 5, 6, 10, 11, 28] """
-        return const*np.exp(2*(-1/tau)*t)+input
+        return const*np.exp((-1/tau)*t)+input
 
 
     """ ================= Retina Layer ========================="""
@@ -115,53 +120,145 @@ class ESTMD:
         (m, n) = self.get_shape()
 
         try:
-            buffer_frame = np.zeros((m, n))
+            y_lmc_buffer = np.zeros((m, n))
+            y_on_buffer = np.zeros((m, n))
+            y_off_buffer = np.zeros((m, n))
             for (i, j) in itertools.product(range(m), range(n)):
                 x = self.frame[i, j]
+
                 # equation [6]
                 x_lmc = self.get_equa_diff_solution(x, self.t, self.tau_3, self.const_3)
+
                 # equation [7]
                 y_lmc = x - x_lmc
-                buffer_frame[i, j] = y_lmc
-            self.frame  = buffer_frame.astype(np.uint8)
-            cv2.imshow("4. High pass filter", self.frame)
+                y_lmc_buffer[i, j] = y_lmc
+
+                # equation [8]
+                y_on_buffer[i, j] = (y_lmc + abs(y_lmc))/2
+
+                # equation [9]
+                off_buffer[i, j] = (y_lmc - abs(y_lmc))/2
+
+            self.y_lmc  = y_lmc_buffer.astype(np.uint8)
+            self.y_on = y_on_buffer.astype(np.uint8)
+            self.y_off = y_off_buffer.astype(np.uint8)
 
         except Exception as e:
             print("Error in Lamina layer / high pass filter :", e)
+            self.y_on, self.y_off = None, None
+
+        return (self.y_on, self.y_off)
 
 
     """ ======================= Medulla Layer =============================="""
     def FDSR(self):
-        """ Separate LMCs' output to ON and OFF channels """
+        """ The FDSR mechanism is able to suppress rapidly changed texture
+        information and enhance noval contrast change """
+
+        (pre_y_on, pre_y_off) = ESTMD(self.pre_frame, t-1).FDSR()
         self.high_pass_filter()
         (m, n) = self.get_shape()
 
         try:
-            on_buffer = np.np.zeros((m, n))
-            off_buffer = np.np.zeros((m, n))
+            s_on_buffer = np.zeros((m, n))
+            s_off_buffer = np.zeros((m, n))
             for (i, j) in itertools.product(range(m), range(n)):
-                y_lmc = self.frame[i, j]
-                # equation [8]
-                on_buffer[i, j] = (y_lmc + abs(y_lmc))/2
-                # equation [9]
-                off_buffer[i, j] = (y_lmc - abs(y_lmc))/2
-            self.on_channel = on_buffer.astype(np.uint8)
-            self.off_channel = off_buffer.astype(np.uint8)
+
+                y_on = self.y_on[i, j]
+                # equation [10]
+                if y_on > pre_y_on:
+                    s_on = self.get_equa_diff_solution(y_on, self.t, self.tau_fast, self.const_4)
+                else:
+                    s_on = self.get_equa_diff_solution(y_on, self.t, self.tau_slow, self.const_4)
+                s_on_buffer[i, j] = s_on
+
+                y_off = self.y_off[i, j]
+                # equation [11]
+                if y_off > pre_y_off:
+                    s_off = self.get_equa_diff_solution(y_off, self.t, self.tau_fast, self.const_4)
+                else:
+                    s_off = self.get_equa_diff_solution(y_off, self.t, self.tau_slow, self.const_4)
+                s_off_buffer[i, j] = s_off
+
+
+            self.s_on = s_on_buffer.astype(np.uint8)
+            self.s_off = s_on_buffer.astype(np.uint8)
+
         except Exception as e:
             print("Error in Medulla layer / FDSR :", e)
 
-    def signal(self):
-        pass
 
-    def HW_R(self):
-        pass
+    def sigma_et_HWR(self):
+        (pre_y_on, pre_y_off) = ESTMD(self.pre_frame, t-1).FDSR()
+        self.FDSR()
+        (m, n) = self.get_shape()
+
+        try:
+            f_on_buffer = np.zeros((m, n))
+            f_off_buffer = np.zeros((m, n))
+            for (i, j) in itertools.product(range(m), range(n)):
+
+                y_on = self.y_on[i, j]
+                s_on = self.s_on[i, j]
+                # equation [12]
+                f_on_buffer[i, j] = max(0, y_on - s_on)
+
+                y_off = self.y_off[i, j]
+                s_off = self.s_off[i, j]
+                # equation [13]
+                f_off_buffer[i, j] = max(0, y_off - s_off)
+
+            self.f_on = f_on_buffer.astype(np.uint8)
+            self.f_off = f_off_buffer.astype(np.uint8)
+
+        except Exception as e:
+            print("Error in Medulla layer / Sigma or HW-R :", e)
+
+
 
 
     """ ======================= Lobula Layer ============================"""
+    def LI(self):
+        (pre_y_on, pre_y_off) = ESTMD(self.pre_frame, t-1).FDSR()
+        self.FDSR()
+        (m, n) = self.get_shape()
+
+        try:
+            buffer = np.zeros((m, n))
+            buffer = np.zeros((m, n))
+            for (i, j) in itertools.product(range(m), range(n)):
+                pass
+
+        except Exception as e:
+            print("Error in Lobula Layer / LI :", e)
+
     def delay(self):
         """ Slight delay on the OFF channel """
-        pass
+        self.LI()
+        (m, n) = self.get_shape()
+
+        try:
+            buffer = np.zeros((m, n))
+            for (i, j) in itertools.product(range(m), range(n)):
+                # equation [28]
+                lob_off = self.get_equa_diff_solution(f_off, self.t, self.tau_5, self.const_5)
+                buffer[i, j] = lob_off
+            self.f_off = buffer.astype(np.uint8)
+        except Exception as e:
+            print("Error in Lobula Layer / delay :", e)
 
     def final_output(self):
         """ Exhibits correlation between ON and OFF channels """
-        pass
+        self.LI()
+        (m, n) = self.get_shape()
+
+        try:
+            buffer = np.zeros((m, n))
+            for (i, j) in itertools.product(range(m), range(n)):
+                # equation [29]
+                output = self.f_on[i, j]*self.f_off[i, j]
+                buffer[i, j] = output
+            self.output = buffer.astype(np.uint8)
+            cv2.imshow("Final output", self.output)
+        except Exception as e:
+            print("Error in Lobula Layer / final output :", e)
