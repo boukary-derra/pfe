@@ -6,10 +6,10 @@ def gauss(x, y, a, mu, sigma):
     return a*np.exp(-(x - mu)**2 / (2 * sigma**2)) * np.exp(-(y - mu)**2 / (2 * sigma**2))
 
 # Générer des données pour x, y et z
-x = np.linspace(-5, 5, 100)
-y = np.linspace(-5, 5, 100)
+x = np.linspace(-5, 5, 500)
+y = np.linspace(-5, 5, 500)
 X, Y = np.meshgrid(x, y)
-Z = gauss(X, Y, 1, 0, 1)
+Z = gauss(X, Y, 1, 0, 2)
 
 # Tracer la fonction gaussienne 2D
 ax = plt.axes(projection="3d")

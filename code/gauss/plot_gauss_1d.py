@@ -10,6 +10,8 @@ x = np.linspace(-5, 5, 100)
 
 y = gauss(x, 1, 0, 1)
 # Tracer la fonction gaussienne
+print(x)
+print(y)
 plt.plot(x, y)
 plt.xlabel('Axe x')
 plt.ylabel('Axe y')

@@ -1,111 +1,215 @@
-import cv2
+#======= Boukary DERRA ==========
+# ===== PFE: 01-03-2023 ===========
+
+# Modules
 import numpy as np
 import itertools
-import sympy as sp
-from mpl_toolkits import mplot3d
+import cv2
 import matplotlib.pyplot as plt
-from IPython.display import display
 
-#  TOOLS
-def equadif_resoluion(l, t_val, tau=3, C1_val=1):
-    t = sp.symbols('t')
-    C1 = sp.symbols('C1')
-    lc = sp.Function('lc')(t)
-    diffeq = sp.Eq(lc.diff(t)+(1/tau)*lc, (1/tau)*l)
-    display(diffeq)
-    solution = sp.dsolve(diffeq, lc)
-    solution = solution.rhs
-    solution = solution.subs({t: t_val, C1: C1_val})
-    return solution
+# class STMD
+class STMD:
+    def __init__(self, input=None, scale_percent=None):
 
-"""def low_pass(l, t_val, tau=3, C1_val=1):
-    return np.exp(-0.33*t_val) + l"""
+        # checks
+        if (input is None) or (not isinstance(input, np.ndarray)):
+            raise ValueError("Input must be an image")
 
-"""re = low_pass(l=1, t_val=1)
-print(re)
-re = low_pass(l=7, t_val=1)
-print(re)"""
+        if len(input.shape) > 2:
+            input = cv2.cvtColor(input, cv2.COLOR_BGR2GRAY)
 
+        self.height, self.width = input.shape[:2]
 
-# =========================== Retine layer======================================
-# photoreceptor
-def photoreceptor_2016(gray_img):
-    """
-        Input: Gray style image (matrix)
-        Goal: Apply a blur effect to the input image
-    """
+        if (scale_percent is not None) and (isinstance(scale_percent, int)):
+            input = resize_image(input, scale_percent)
 
-    w = np.array([1/16, 1/8, 1/16, 1/8, 1/4, 1/8, 1/16, 1/8, 1/16]).reshape(3, 3) # -> Gaussian convolution mask
-    (m, n) = gray_img.shape # -> input matrix size (m: with, n: height)
-    output = np.zeros((m, n)) # -> output initialization (null matrix with the same size as the input)
+        # Convert the image to float32 to prevent overflow
+        input = input.astype(np.float32) / 255.0
 
-    for (i, j) in itertools.product(range(m), range(n)): # -> iterate through all the elements of the input matrix
-        l = 0
-        for v in [-1, 0, 1]: # -> sum of v from -1 to 1
-            for u in [-1, 0, 1]: # -> sum of u from -1 to 1
-                try:
-                    l += w[u, v] * gray_img[i+u, j+v] # photoreceptor operation: doc [1] eq [1]
-                except: pass
-        output[i, j] = l # -> fill output matrix element by element
+        # inputs
+        self.input = input
+        self.scale_percent = scale_percent
 
-    output  = output .astype(np.uint8) # -> convert output to np.uint8
-    return output  # -> return the output
+        # constants
+        self.gauss_filter_size = 3
+        self.gauss_filter_sigma = 0.8
+        self.u = 0.7
+        self.w = np.array([1/16, 1/8, 1/16, 1/8, 1/4,
+                                1/8, 1/16, 1/8, 1/16]).reshape(3, 3)
+        self.lipetz_transformation_tau = 3
+        self.low_pass_filter_tau = 3
+        self.lmc_tau = 3
+        self.tau_fast = 5
+        self.tau_slow = 15
 
-# Lipetz transformation
-def lipetz_trans(img):
-    u = 0.7
-    (m, n) = img.shape
-    output = np.zeros((m, n))
-    for (i, j) in itertools.product(range(m), range(n)):
-        l = img[i, j]
-        lc = equadif_resoluion(l=l, t_val=1)
-        p = l**u/(l**u + lc**u)
-        output[i, j] = l
-    output  = output .astype(np.uint8)
-    return output
+        # outpus
+        self.gaussian_kernel = None
+        self.photoreceptor_output = None
+        self.lipetz_transformation_output = None
+        self.low_pass_filter_output = None
+        self.lmc_output = None
+
+        # run
 
 
-# =========================== Lamina layer======================================
-# Low Pass Filter
-def low_pass_filter(img):
-    (m, n) = img.shape
-    output = np.zeros((m, n))
-    for (i, j) in itertools.product(range(m), range(n)):
-        p = img[i, j]
-        x = equadif_resoluion(l=p, t_val=1)
-        output[i, j] = l
-    output  = output .astype(np.uint8)
-    return output
+    def get_gaussian_kernel(self):
+        try:
+            size, sigma = self.gauss_filter_size, self.gauss_filter_sigma
 
-# High Pass Filter (LMCs)
-def high_pass_filter(img):
-    (m, n) = img.shape
-    output = np.zeros((m, n))
-    for (i, j) in itertools.product(range(m), range(n)):
-        x = img[i, j]
-        x_lmc = equadif_resoluion(l=x, t_val=1)
-        y_lmc = x - x_lmc
-        output[i, j] = y_lmc
-    output  = output .astype(np.uint8)
-    return output
+            ax = np.arange(-size // 2 + 1, size // 2 + 1)
+            xx, yy = np.meshgrid(ax, ax)
 
+            kernel = np.exp(-(xx**2 + yy**2) / (2* sigma**2))
 
-# =========================== Medulla layer=====================================
-# FDSR (ON)
-    "pass"
+            kernel = kernel / (2*np.pi*sigma**2)
 
-# FDSR (OFF)
-    "pass"
-
-
-# =========================== Lobula layer======================================
-    "pass"
+            self.gaussian_kernel = kernel
+        except Exception as e:
+            self.gaussian_kernel = self.w
+            print("Error in Guassian Kernel :", e)
 
 
 
+    """ ================= Retina Layer ========================="""
+    def photoreceptor(self):
+        """ Blur effect """
+        # input frame size (m: with, n: height)
+        self.get_gaussian_kernel()
+        (m, n) = self.input.shape
 
-# =========================== Documentation ====================================
-"""
-[1] H.  Wang, J Peng and S.  Yue, “Bio-inspired Small Target Motion Detector with a new Lateral Inhibition Mechanism,”
-Conference Paper - July 2016.
-"""
+        try:
+            # output initialization (null matrix with the same size as the input)
+            buffer_frame = np.zeros((m, n))
+
+            # iterate through all the elements of the input frame
+            for (i, j) in itertools.product(range(m), range(n)):
+                l = 0
+                # equation [1]
+                # sum of v from -1 to 1
+                for v in [-1, 0, 1]:
+                    # sum of u from -1 to 1
+                    for u in [-1, 0, 1]:
+                        try:
+                            l += self.gaussian_kernel[u, v] * self.input[i+u, j+v]
+                        except: pass
+                 # fill output frame element by element
+                buffer_frame[i, j] = l
+            self.photoreceptor_output  = buffer_frame
+
+        except Exception as e:
+            print("Error in Retina layer / photoreceptor :", e)
+
+    def lipetz_transformation(self):
+        """ transform the input luminance to membrane potential """
+        self.photoreceptor()
+
+        # Calculate the low-pass filtered version of the image
+        low_pass_image = low_pass_filter(self.photoreceptor_output,
+                                            self.lipetz_transformation_tau)
+
+        # Apply the modified Lipetz transformation
+        numerator = np.power(self.photoreceptor_output, self.u)
+
+        denominator = np.power(self.photoreceptor_output, self.u) + np.power(low_pass_image, self.u)
+
+        transformed_image = np.divide(numerator, denominator)
+
+        self.lipetz_transformation_output = transformed_image
+
+
+    """ ======================= Lamina Layer ==============================="""
+    def low_pass_filter(self):
+        """ Slight delay """
+        self.lipetz_transformation()
+        self.low_pass_filter_output = low_pass_filter(self.lipetz_transformation_output, self.low_pass_filter_tau)
+
+
+    def LMC(self):
+        """ (LMCs) Remove redundant information; Maximize information
+                                transmission                            """
+        self.low_pass_filter()
+
+        x = self.low_pass_filter_output
+        X_lmc = low_pass_filter(x, self.lmc_tau)
+        Y_lmc = x - X_lmc
+
+        # Y_lmc = (Y_lmc * 255).astype(np.uint8)
+        # Y_lmc = cv2.resize(Y_lmc, (self.width, self.height),
+                                # interpolation=cv2.INTER_AREA)
+
+        # Convert the image back to the original range (0-255)
+        Y_lmc = (Y_lmc * 255).astype(np.uint8)
+        
+        self.lmc_output = Y_lmc
+
+        # ON / OFF channels
+        # self.lmc_output_ON = (Y_lmc + abs(Y_lmc))/2
+        # self.lmc_output_OFF = (Y_lmc - abs(Y_lmc))/2
+
+    def FDSR(self, pre_lmc):
+        pass
+        """if self.lmc_output.shape == pre_lmc.shape:
+            # Calculate the difference between the two images
+            self.delta = cv2.subtract(self.lmc_output, pre_lmc)
+
+            # Fast Depolarization
+            fast_depolarization_on = cv2.GaussianBlur(delta_on, (0, 0), self.tau_fast)
+            fast_depolarization_off = cv2.GaussianBlur(delta_off, (0, 0), self.tau_fast)
+
+            # Slow Repolarization
+            slow_repolarization_on = cv2.GaussianBlur(fast_depolarization_on, (0, 0), self.tau_slow)
+            slow_repolarization_off = cv2.GaussianBlur(fast_depolarization_off, (0, 0), self.tau_slow)
+
+            # Calculate S by adding the slow repolarization output to the image at time t
+            S_on = cv2.add(self.lmc_output_ON, slow_repolarization_on)
+            S_off = cv2.add(self.lmc_output_OFF, slow_repolarization_off)
+
+            # outputs
+            self.FDSR_ON_ouptut = S_on
+            self.FDSR_OFF_ouptut = S_off
+        else:
+            raise ValueError ("frame and pre_frame must be the same frame")"""
+
+
+    def get_std(self):
+        self.LMC()
+        output = self.lmc_output
+        return output
+
+    def get_delta(self, frame, pre_frame):
+        " to remove static targets "
+        delta = cv2.subtract(frame, pre_frame)
+        return delta
+
+    def get_fdsr(self, frame, delta):
+        # Fast Depolarization
+        fast_depolarization = cv2.GaussianBlur(delta, (0, 0), self.tau_fast)
+        # Slow Repolarization
+        slow_repolarization = cv2.GaussianBlur(fast_depolarization, (0, 0), self.tau_slow)
+        # Calculate S by adding the slow repolarization output to the image at time t
+        S = cv2.add(frame, slow_repolarization)
+        return S
+
+    def convert_for_display(self, input):
+        input = cv2.resize(input, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        input = cv2.cvtColor(input, cv2.COLOR_GRAY2BGR)
+        return input
+
+def low_pass_filter(image, tau):
+    # Apply a simple low-pass filter to the image
+    kernel_size = int(2 * np.ceil(2 * tau) + 1)
+    blurred_image = cv2.GaussianBlur(image, (kernel_size, kernel_size), sigmaX=tau, sigmaY=tau)
+    return blurred_image
+
+
+def resize_image(image, scale_percent):
+
+    # Calculate the new dimensions
+    width = int(image.shape[1] * scale_percent / 100)
+    height = int(image.shape[0] * scale_percent / 100)
+    new_dimensions = (width, height)
+
+    # Resize the image
+    image = cv2.resize(image, new_dimensions, interpolation=cv2.INTER_AREA)
+
+    return image
