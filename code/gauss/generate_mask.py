@@ -18,6 +18,16 @@ def mask_gaussian(sigma, size=3):
 
     return mask
 
+def gaussian_kernel(size, sigma)
+
+    ax = np.arange(-size // 2 + 1, size // 2 + 1)
+    xx, yy = np.meshgrid(ax, ax)
+
+    kernel = np.exp(-(xx**2 + yy**2) / (2* sigma**2))
+
+    kernel = kernel / (2*np.pi*sigma**2)
+    return kernel
+    
 # Dans cette section vous créer votre mask en choisissant sigma Ex: pour sigma = 0.8 ou 1
 print("Le Filtre Gaussian pour sigma = 0.8 :\n")
 mask = mask_gaussian(0.7)

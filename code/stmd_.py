@@ -162,11 +162,6 @@ class STMD(STD):
         delta_off = cv2.subtract(self.lmc_output_OFF, pre_stmd.lmc_output_OFF)
 
 
-
-
-
-
-
         # Fast Depolarization
         fast_depolarization_on = cv2.GaussianBlur(delta_on, (0, 0), self.tau_fast)
         fast_depolarization_off = cv2.GaussianBlur(delta_off, (0, 0), self.tau_fast)
