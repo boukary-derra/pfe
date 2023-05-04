@@ -9,39 +9,26 @@ pre_frame = cv2.imread("media/frame_5.jpg")
 
 
 def show_output(output, name=''):
-    file = os.path.join("result", name+'.jpg')
+    file = os.path.join("result/report", name+'.jpg')
     print("\n============================ " + name + " ===============================\n ")
     print(output)
 
     # output = n_to_width(output, 1920)
     cv2.imshow(name, output)
-    cv2.imwrite(file, output)
+    # cv2.imwrite(file, output)
 
+# generate Y_ON and Y_OFF for the previous frame
+pre_stmd = STMD(pre_frame)
+pre_stmd.LMC()
+pre_y_on = pre_stmd.Y_ON
+pre_y_off = pre_stmd.Y_OFF
 
+model = STMD(frame)
+stmd = model.get_stmd(pre_y_on, pre_y_off)
 
-stmd = STMD(frame)
-stmd.LMC()
-output1 = stmd.gaussian_kernel
-output2 = stmd.photoreceptor_output
-output3 = stmd.lipetz_transformation_output
-output4 = stmd.low_pass_filter_output
-output5 = stmd.get_std() # lmc output
-output5_ = stmd.convert_for_display(output5)
+# output5_ = stmd.convert_for_display(output5)
 
-frame = output5
-stmd2 = STMD(pre_frame)
-stmd2.LMC()
-pre_frame = stmd2.get_std()
-output6 = stmd.get_delta(frame, pre_frame)
-output6 = stmd.convert_for_display(output6)
-
-
-show_output(output1, "gaussian_kernel")
-show_output(output2, "photoreceptor")
-show_output(output3, "lipetz_transformation")
-show_output(output4, "low_pass_filter")
-show_output(output5_, "LMC")
-show_output(output6, "DELTA")
+show_output(stmd, "STMD")
 
 
 
