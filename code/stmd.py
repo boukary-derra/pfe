@@ -1,35 +1,28 @@
-#======= Boukary DERRA ==========
-# ===== PFE: 01-03-2023 ===========
+#======= Boukary DERRA (PFE) ==========
+# ===== created: 01-02-2023 ===========
+# ===== last updated: 09-05-2023 ======
 
 # Modules
 import numpy as np
 import itertools
 import cv2
 import matplotlib.pyplot as plt
+from scipy.signal import convolve2d
+
 
 # class STMD
 class STMD:
-    def __init__(self, input=None, scale_percent=None):
+    def __init__(self, frame, last_frame=None):
 
         # checks
-        if (input is None) or (not isinstance(input, np.ndarray)):
-            raise ValueError("Input must be an image")
-
-        if len(input.shape) > 2:
-            input = cv2.cvtColor(input, cv2.COLOR_BGR2GRAY)
-
-        self.height, self.width = input.shape[:2]
-
-        """if (scale_percent is not None) and (isinstance(scale_percent, int)):
-            input = resize_image(input, scale_percent)"""
-
-        # Convert the image to float32 to prevent overflow
-        input = input.astype(np.float32) / 255.0
-
+        if (frame is None) or (not isinstance(frame, np.ndarray)):
+            raise ValueError("frame must be an image")
+        # Preprocessing
+        frame = self.convert_for_process(frame)
+        self.height, self.width = frame.shape[:2]
         # inputs
-        self.input = input
-        # self.scale_percent = scale_percent
-
+        self.frame = frame
+        self.last_frame = last_frame
         # constants
         self.gauss_filter_size = 3
         self.gauss_filter_sigma = 0.8
@@ -44,19 +37,21 @@ class STMD:
         self.tau_delay = 3
 
         # outpus
-        self.gaussian_kernel = None
+        """self.gaussian_kernel = None
         self.photoreceptor_output = None
         self.lipetz_transformation_output = None
         self.low_pass_filter_output = None
-        self.lmc_output = None
-        self.S_ON = None
-        self.S_OFF = None
-        self.F_ON = None
-        self.F_OFF = None
-        self.output = None
+        self.output = None"""
 
-        # run LMC()
-        self.LMC()
+        # ======> LI ======
+        # Set the block size and the search range
+        self.k1, self.k2 = 2, 2
+        self.block_size = 1
+        self.search_range = 8
+        self.p, self.q = 8, 8  # change to your desired size
+        self.a = 1  # change to your desired value
+
+
 
     def get_gaussian_kernel(self):
         try:
@@ -69,19 +64,19 @@ class STMD:
 
             kernel = kernel / (2*np.pi*sigma**2)
 
-            self.gaussian_kernel = kernel
+            gaussian_kernel = kernel
         except Exception as e:
-            self.gaussian_kernel = self.w
+            gaussian_kernel = self.w
             print("Error in Guassian Kernel :", e)
-
+        return gaussian_kernel
 
 
     """ ================= Retina Layer ========================="""
-    def photoreceptor(self):
+    def get_photoreceptor(self):
         """ Blur effect """
         # input frame size (m: with, n: height)
-        self.get_gaussian_kernel()
-        (m, n) = self.input.shape
+        gaussian_kernel = self.get_gaussian_kernel()
+        (m, n) = self.frame.shape
 
         try:
             # output initialization (null matrix with the same size as the input)
@@ -96,78 +91,75 @@ class STMD:
                     # sum of u from -1 to 1
                     for u in [-1, 0, 1]:
                         try:
-                            l += self.gaussian_kernel[u, v] * self.input[i+u, j+v]
+                            l += gaussian_kernel[u, v] * self.frame[i+u, j+v]
                         except: pass
                  # fill output frame element by element
                 buffer_frame[i, j] = l
-            self.photoreceptor_output  = buffer_frame
+            l = buffer_frame
 
         except Exception as e:
+            photoreceptor = None
             print("Error in Retina layer / photoreceptor :", e)
+        return l
 
-    def lipetz_transformation(self):
+    def get_lipetz_transformation(self):
         """ transform the input luminance to membrane potential """
-        self.photoreceptor()
+        l = self.get_photoreceptor()
 
         # Calculate the low-pass filtered version of the image
-        low_pass_image = low_pass_filter(self.photoreceptor_output, self.lipetz_transformation_tau)
+        lc = low_pass_filter(l, self.lipetz_transformation_tau)
 
         # Apply the modified Lipetz transformation
-        numerator = np.power(self.photoreceptor_output, self.u)
+        numerator = np.power(l, self.u)
 
-        denominator = np.power(self.photoreceptor_output, self.u) + np.power(low_pass_image, self.u)
+        denominator = np.power(l, self.u) + np.power(lc, self.u)
 
-        transformed_image = np.divide(numerator, denominator)
+        # transformed image
+        p = np.divide(numerator, denominator)
 
-        self.lipetz_transformation_output = transformed_image
+        return p
 
 
     """ ======================= Lamina Layer ==============================="""
-    def low_pass_filter(self):
+    def get_low_pass_filter(self):
         """ Slight delay """
-        self.lipetz_transformation()
-        self.low_pass_filter_output = low_pass_filter(self.lipetz_transformation_output, self.low_pass_filter_tau)
+        p = self.get_lipetz_transformation()
+        x = low_pass_filter(p, self.low_pass_filter_tau)
+        return x
 
 
-    def LMC(self):
+    def get_lmc(self):
         """ (LMCs) Remove redundant information; Maximize information
                                 transmission                            """
-        self.low_pass_filter()
         try:
-            x = self.low_pass_filter_output
+            x = self.get_low_pass_filter()
             X_lmc = low_pass_filter(x, self.lmc_tau)
-            Y_lmc = x - X_lmc
+            y_lmc = x - X_lmc
 
-            # Y_lmc = (Y_lmc * 255).astype(np.uint8)
-            # Y_lmc = cv2.resize(Y_lmc, (self.width, self.height),
-                                    # interpolation=cv2.INTER_AREA)
-
-            # Convert the image back to the original range (0-255)
-            # Y_lmc = (Y_lmc * 255).astype(np.uint8)
-
-            self.lmc_output = Y_lmc
 
         except Exception as e:
+            y_lmc = None
             print("ERROR in LMC", e)
 
-    def get_std(self):
-        self.LMC()
-        output = self.lmc_output
-        return output
+        return y_lmc
 
-    def get_stmd(self, lmc, pre_lmc):
-        # ON / OFF channels
-        y_on = (lmc + abs(lmc))/2
-        y_off = (lmc - abs(lmc))/2
+    def get_on_off_channels(self):
+        y_lmc = self.get_lmc()
+        if y_lmc is not None:
+            y_on = (y_lmc + abs(y_lmc))/2
+            y_off = (y_lmc - abs(y_lmc))/2
+        else:
+            y_on, y_off = None, None
+        return y_on, y_off
 
-        pre_y_on = (pre_lmc + abs(pre_lmc))/2
-        pre_y_off = (pre_lmc - abs(pre_lmc))/2
+    def get_fdsr(self):
+        y_on, y_off = self.get_on_off_channels()
+        pre_y_on, pre_y_off = STMD(self.last_frame).get_on_off_channels()
 
-        """ ====== FDSR ====== """
         if (y_on is not None) and (y_off is not None):
             try:
-                s_on = y_on.copy()
-                s_off = y_off.copy()
+                s_on = null_matrix = np.zeros(y_on.shape, dtype=np.float32)
+                s_off = null_matrix = np.zeros(y_off.shape, dtype=np.float32)
 
 
                 # Loop through each pixel of the image and apply Gaussian blur
@@ -194,58 +186,102 @@ class STMD:
                     s_on[i,j] = blurred_pixel_on
                     s_off[i,j] = blurred_pixel_off
 
-                # outputs
-                self.S_ON = s_on
-                self.S_OFF = s_off
-
             except Exception as e:
-                self.S_ON = None
-                self.S_OFF = None
+                s_on = None
+                s_off = None
                 print("ERROR in FDSR", e)
         else:
             raise ValueError("ERROR in FDSR: Y_ON, Y_OFF are empty")
 
-        """ ====== SIGMA ====== """
-        if self.S_ON is not None:
-            self.F_ON = cv2.subtract(y_on, self.S_ON)
-            self.F_OFF = cv2.subtract(y_off, self.S_OFF)
-        else:
-            raise ValueError("ERROR in SIGMA: S_ON, S_OFF are empty")
+        return s_on, s_off
 
-        """ ====== HW-R ======"""
-        if self.F_ON is not None:
-            self.F_ON = get_max(self.F_ON)
-            self.F_OFF = get_max(self.F_OFF)
+    def get_sigma(self): # ***
+        s_on, s_off = self.get_fdsr()
+        y_on, y_off = self.get_on_off_channels()
+
+        """y_on = self.convert_for_display(y_on)
+        y_off = self.convert_for_display(y_off)
+
+        s_on = self.convert_for_display(s_on)
+        s_off = self.convert_for_display(s_off)"""
+
+        if (s_on is not None) and (y_on is not None):
+            f_on = cv2.subtract(y_on, s_on)
+            f_off = cv2.subtract(y_off, s_off)
+        else:
+            f_on, f_off = None, None
+            raise ValueError("ERROR in SIGMA: S_ON, S_OFF are empty")
+        return f_on, f_off
+
+    def get_hwr(self):
+        # f_on, f_off = self.get_sigma()
+        f_on, f_off = self.get_fdsr()
+        f_on = self.convert_for_display(f_on)
+        f_off = self.convert_for_display(f_off)
+        # ======> HW-R ======
+        if f_on is not None:
+            f_on = get_max(f_on)
+            f_off = get_max(f_off)
         else:
             raise ValueError("ERROR in HW-R: F_ON, F_OFF are empty")
+        return f_on, f_off
 
-        """ ====== LI: pass ====== """
+    def get_li(self):
+        # get f_on, f_off
+        f_on, f_off = self.get_hwr()
 
-        """ ====== DELAY ====== """
-        if self.F_OFF is not None:
-            self.F_OFF = low_pass_filter(self.F_OFF, self.tau_delay)
+        # get motion_vectors
+        motion_vectors = block_based_motion_estimation(self.frame, self.last_frame, self.block_size, self.search_range)
+
+        # get u, v
+        u, v = get_motion_components(motion_vectors)
+
+        # get h
+        h = create_convolution_kernel(self.p, self.q, self.a)
+
+        # get u_c, v_c
+        u_c, v_c = convolve_uv_with_h(u, v, h)
+
+        # calculate w
+        w = calculate_w(u_c, v_c)
+        f_on_li = self.k1 * f_on + self.k2 * f_on * w
+        f_off_li = self.k1 * f_off + self.k2 * f_off * w
+
+        return f_on_li, f_off_li
+
+    def get_delay(self):
+        f_on_li, f_off_li = self.get_li()
+        if f_off_li is not None:
+            lob_off = low_pass_filter(f_off_li, self.tau_delay)
         else:
             raise ValueError("ERROR in DELAY: F_OFF is empty")
+        return f_on_li, lob_off
 
-        """ ====== FINAL OUTPUT ====== """
-        if (self.F_ON is not None) and (self.F_OFF is not None):
-            self.output = cv2.multiply(self.F_ON, self.F_OFF)
+    def get_final_output(self):
+        f_on_li, lob_off = self.get_delay()
+
+        if (f_on_li is not None) and (lob_off is not None):
+            output = cv2.multiply(f_on_li, lob_off)
         else:
+            output = None
             raise ValueError("ERROR in FINAL OUTPUT: F_ON or F_OFF are empty")
 
-        return self.output
+        return output
 
-    """def get_delta(self, frame, pre_frame):
-        " to remove static targets "
-        delta = cv2.subtract(frame, pre_frame)
-        return delta"""
+    def convert_for_process(self, frame):
+        # Convert frame to Gray
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Convert the image to float32 to prevent overflow
+        frame = frame.astype(np.float32) / 255.0
+        return frame
 
-    def convert_for_display(self, input):
+    def convert_for_display(self, frame):
         # Convert the image back to the original range (0-255)
-        input = (input * 255).astype(np.uint8)
+        frame = (frame * 255).astype(np.uint8)
         #input = cv2.resize(input, (self.width, self.height), interpolation=cv2.INTER_AREA)
-        input = cv2.cvtColor(input, cv2.COLOR_GRAY2BGR)
-        return input
+        # frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        return frame
+
 
 def low_pass_filter(image, tau):
     # Apply a simple low-pass filter to the image
@@ -253,18 +289,6 @@ def low_pass_filter(image, tau):
     blurred_image = cv2.GaussianBlur(image, (kernel_size, kernel_size), sigmaX=tau, sigmaY=tau)
     return blurred_image
 
-
-"""def resize_image(image, scale_percent):
-
-    # Calculate the new dimensions
-    width = int(image.shape[1] * scale_percent / 100)
-    height = int(image.shape[0] * scale_percent / 100)
-    new_dimensions = (width, height)
-
-    # Resize the image
-    image = cv2.resize(image, new_dimensions, interpolation=cv2.INTER_AREA)
-
-    return image"""
 
 def get_max(img):
     # Compare each pixel value to 0 and get a mask with the result
@@ -280,3 +304,130 @@ def get_max(img):
     max_image = cv2.bitwise_and(max_image, max_image, mask=mask)
 
     return max_image
+
+
+# ======> Preprocessing for LI ======
+def calculate_sad(block1, block2):
+    """ Sum of absolute differences between two block
+            or (the matching criteria) -> equayion [6]             """
+    sad =  np.sum(np.abs(block1 - block2))
+    return sad
+
+
+def find_optimal_motion_vector(current_block, last_frame, i, j, search_range):
+    """ To calculate the translation vector (namely the motion vector)
+            that minimizes the motion criteria -> equation [17]        """
+    min_sad = float('inf')
+    optimal_motion_vector = (0, 0)
+
+    block_height, block_width = current_block.shape
+
+    for u in range(-search_range, search_range + 1):
+        for v in range(-search_range, search_range + 1):
+            shifted_i = np.clip(i + u, 0, last_frame.shape[0] - block_height)
+            shifted_j = np.clip(j + v, 0, last_frame.shape[1] - block_width)
+            shifted_block = last_frame[shifted_i:shifted_i + block_height, shifted_j:shifted_j + block_width]
+            sad = calculate_sad(current_block, shifted_block)
+
+            if sad < min_sad:
+                min_sad = sad
+                optimal_motion_vector = (u, v)
+
+    return optimal_motion_vector
+
+
+def block_based_motion_estimation(current_frame, last_frame, block_size, search_range):
+    """ This code divides the current frame into blocks of a given size and
+        finds the optimal motion vector for each block by searching within
+        the last frame. for our case, blok_size = 1.
+        So it will find the optical motion for each pixel """
+    height, width = current_frame.shape
+    num_blocks_height = int(np.ceil(height / block_size))
+    num_blocks_width = int(np.ceil(width / block_size))
+    motion_vectors = np.zeros((num_blocks_height, num_blocks_width, 2), dtype=int)
+    n = 0
+    for i in range(0, height, block_size):
+        for j in range(0, width, block_size):
+            current_block = current_frame[i:min(i + block_size, height), j:min(j + block_size, width)]
+            motion_vectors[i // block_size, j // block_size] = find_optimal_motion_vector(current_block, last_frame, i, j, search_range)
+            n = n+1
+        print(n/(height*width))
+
+    return motion_vectors
+
+
+def get_motion_components(motion_vectors):
+    """ To get the motion vector matrix U, V """
+    U = motion_vectors[:,:,0] # equation 18
+    V = motion_vectors[:,:,1] # equation 19
+    return U, V
+
+
+def create_convolution_kernel(p, q, a):
+    """ Generate kernel H """
+    assert q > 1, "q should be greater than 1 to avoid division by zero"
+    b = -a / (4 * (q - 1))
+
+    H = np.zeros((p, q))
+    H[0, :] = b
+    H[p-1, :] = b
+    H[:, 0] = b
+    H[:, q-1] = b
+    H[p // 2, q // 2] = a
+
+    return H
+
+
+def convolve_uv_with_h(U, V, H):
+    """ Convlolve U and V by H in order to get """
+    U_c = convolve2d(U, H, mode='same') # equation 20
+    V_c = convolve2d(V, H, mode='same') # equation 21
+
+    return U_c, V_c
+
+"""
+The neighborhood defined here, PR, consists of the pixels that are
+in a region surrounding the pixel at (i, j). This region seems to be
+a rectangular area that extends ro pixels vertically and co pixels
+horizontally from (i, j). The region includes the rows from (i-ro) to
+(i+ro) and the columns from (j-co) to (j+co).
+"""
+# -> concrêteent p: hauteur de ligne et q: largeur de columns du kernel H
+
+def calculate_w(U_c, V_c):
+    """ Calulate W """
+    w = np.sqrt(U_c**2 + V_c**2)
+    return w
+
+
+def lateral_inhibition(F_ON, F_OFF, w, k1, k2):
+    """ hen, we implement our new lateral inhibition mechanism
+        by multiplying F_ON and F_OFF by w, respectively  """
+    F_ON_new = k1 * F_ON + k2 * F_ON * w
+    F_OFF_new = k1 * F_OFF + k2 * F_OFF * w
+    return F_ON_new, F_OFF_new
+
+"""
+Remarque: On manque de recule.
+    Pour les choix de constante notamment k1 et k2.
+    Une combinaison en LMC et LI pourrait donnéer des resultats interressante.
+
+Fais:
+    -> Calule de LI d'un seul frame prend beaucoup de temps. (blok_size=1)
+    Conséquence: Prolème possible:
+        * mauvais chois des constantes
+        * inssufissance de tests pour avoir assez de recule; (il faur traiter au moins 10 à frame successif).
+"""
+
+
+"""def resize_image(image, scale_percent):
+
+    # Calculate the new dimensions
+    width = int(image.shape[1] * scale_percent / 100)
+    height = int(image.shape[0] * scale_percent / 100)
+    new_dimensions = (width, height)
+
+    # Resize the image
+    image = cv2.resize(image, new_dimensions, interpolation=cv2.INTER_AREA)
+
+    return image"""
