@@ -16,13 +16,15 @@ class STMD:
 
         # checks
         if (frame is None) or (not isinstance(frame, np.ndarray)):
+
             raise ValueError("frame must be an image")
-        # Preprocessing
+        # preprocessing
         frame = self.convert_for_process(frame)
         self.height, self.width = frame.shape[:2]
         # inputs
         self.frame = frame
         self.last_frame = last_frame
+
         # constants
         self.gauss_filter_size = 3
         self.gauss_filter_sigma = 0.8
@@ -36,25 +38,17 @@ class STMD:
         self.tau_slow = 15
         self.tau_delay = 3
 
-        # outpus
-        """self.gaussian_kernel = None
-        self.photoreceptor_output = None
-        self.lipetz_transformation_output = None
-        self.low_pass_filter_output = None
-        self.output = None"""
-
-        # ======> LI ======
-        # Set the block size and the search range
+        # ======> LI constants ======
         self.k1, self.k2 = 2, 2
         self.block_size = 1
         self.search_range = 8
-        self.p, self.q = 8, 8  # change to your desired size
-        self.a = 1  # change to your desired value
-
+        self.p, self.q = 8, 8  # line height and column width of the kernel H
+        self.a = 1
 
 
     def get_gaussian_kernel(self):
         try:
+            # to delemite the axes
             size, sigma = self.gauss_filter_size, self.gauss_filter_sigma
 
             ax = np.arange(-size // 2 + 1, size // 2 + 1)
@@ -127,7 +121,6 @@ class STMD:
         x = low_pass_filter(p, self.low_pass_filter_tau)
         return x
 
-
     def get_lmc(self):
         """ (LMCs) Remove redundant information; Maximize information
                                 transmission                            """
@@ -143,7 +136,10 @@ class STMD:
 
         return y_lmc
 
+
+    # ====================> Medulla LAYER <====================
     def get_on_off_channels(self):
+        """ Separate LMC to ON/OFF channels for next stage of the processing """
         y_lmc = self.get_lmc()
         if y_lmc is not None:
             y_on = (y_lmc + abs(y_lmc))/2
@@ -153,6 +149,8 @@ class STMD:
         return y_on, y_off
 
     def get_fdsr(self):
+        """ The FDSR mechanism is able to suppress rapidly changed texture
+            information and enhance noval contrast change """
         y_on, y_off = self.get_on_off_channels()
         pre_y_on, pre_y_off = STMD(self.last_frame).get_on_off_channels()
 
@@ -196,6 +194,8 @@ class STMD:
         return s_on, s_off
 
     def get_sigma(self): # ***
+        """ Subtract the filtered signal (s_on, s_off) to the original one
+			(y_on, y_off) """
         s_on, s_off = self.get_fdsr()
         y_on, y_off = self.get_on_off_channels()
 
@@ -214,6 +214,7 @@ class STMD:
         return f_on, f_off
 
     def get_hwr(self):
+        """ Then we replace all the pixels that are negative with 0. """
         # f_on, f_off = self.get_sigma()
         f_on, f_off = self.get_fdsr()
         f_on = self.convert_for_display(f_on)
@@ -226,7 +227,12 @@ class STMD:
             raise ValueError("ERROR in HW-R: F_ON, F_OFF are empty")
         return f_on, f_off
 
+
+    # ====================> Lobula LAYER <====================
     def get_li(self):
+        """ -> LI plays a significant role in differentiating target motion
+            from background motion.
+    	    -> The new LIM that considers velocity and motion direction """
         # get f_on, f_off
         f_on, f_off = self.get_hwr()
 
@@ -250,6 +256,7 @@ class STMD:
         return f_on_li, f_off_li
 
     def get_delay(self):
+        """ Slight delay on the OFF channel """
         f_on_li, f_off_li = self.get_li()
         if f_off_li is not None:
             lob_off = low_pass_filter(f_off_li, self.tau_delay)
@@ -258,6 +265,7 @@ class STMD:
         return f_on_li, lob_off
 
     def get_final_output(self):
+        """ Exhibits correlation between ON and OFF channels """
         f_on_li, lob_off = self.get_delay()
 
         if (f_on_li is not None) and (lob_off is not None):
@@ -268,7 +276,10 @@ class STMD:
 
         return output
 
+
+    # ====================> Other methods <====================
     def convert_for_process(self, frame):
+        """ Frame preprocessing """
         # Convert frame to Gray
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # Convert the image to float32 to prevent overflow
@@ -276,21 +287,24 @@ class STMD:
         return frame
 
     def convert_for_display(self, frame):
+        """ Prepare frame for display """
         # Convert the image back to the original range (0-255)
         frame = (frame * 255).astype(np.uint8)
         #input = cv2.resize(input, (self.width, self.height), interpolation=cv2.INTER_AREA)
-        # frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
         return frame
 
 
+# ====================> Functions <====================
 def low_pass_filter(image, tau):
+    """ Apply a simple low-pass filter to an image """
     # Apply a simple low-pass filter to the image
     kernel_size = int(2 * np.ceil(2 * tau) + 1)
     blurred_image = cv2.GaussianBlur(image, (kernel_size, kernel_size), sigmaX=tau, sigmaY=tau)
     return blurred_image
 
-
 def get_max(img):
+    """ for HW-R """
     # Compare each pixel value to 0 and get a mask with the result
     mask = cv2.compare(img, 0, cv2.CMP_GT)
 
@@ -306,13 +320,12 @@ def get_max(img):
     return max_image
 
 
-# ======> Preprocessing for LI ======
+# ====================> Fonctions for LI ====================
 def calculate_sad(block1, block2):
     """ Sum of absolute differences between two block
-            or (the matching criteria) -> equayion [6]             """
+            or (the matching criteria) -> equayion [6] """
     sad =  np.sum(np.abs(block1 - block2))
     return sad
-
 
 def find_optimal_motion_vector(current_block, last_frame, i, j, search_range):
     """ To calculate the translation vector (namely the motion vector)
@@ -335,7 +348,6 @@ def find_optimal_motion_vector(current_block, last_frame, i, j, search_range):
 
     return optimal_motion_vector
 
-
 def block_based_motion_estimation(current_frame, last_frame, block_size, search_range):
     """ This code divides the current frame into blocks of a given size and
         finds the optimal motion vector for each block by searching within
@@ -355,13 +367,11 @@ def block_based_motion_estimation(current_frame, last_frame, block_size, search_
 
     return motion_vectors
 
-
 def get_motion_components(motion_vectors):
     """ To get the motion vector matrix U, V """
     U = motion_vectors[:,:,0] # equation 18
     V = motion_vectors[:,:,1] # equation 19
     return U, V
-
 
 def create_convolution_kernel(p, q, a):
     """ Generate kernel H """
@@ -377,7 +387,6 @@ def create_convolution_kernel(p, q, a):
 
     return H
 
-
 def convolve_uv_with_h(U, V, H):
     """ Convlolve U and V by H in order to get """
     U_c = convolve2d(U, H, mode='same') # equation 20
@@ -392,13 +401,11 @@ a rectangular area that extends ro pixels vertically and co pixels
 horizontally from (i, j). The region includes the rows from (i-ro) to
 (i+ro) and the columns from (j-co) to (j+co).
 """
-# -> concrêteent p: hauteur de ligne et q: largeur de columns du kernel H
 
 def calculate_w(U_c, V_c):
     """ Calulate W """
     w = np.sqrt(U_c**2 + V_c**2)
     return w
-
 
 def lateral_inhibition(F_ON, F_OFF, w, k1, k2):
     """ hen, we implement our new lateral inhibition mechanism
@@ -407,6 +414,8 @@ def lateral_inhibition(F_ON, F_OFF, w, k1, k2):
     F_OFF_new = k1 * F_OFF + k2 * F_OFF * w
     return F_ON_new, F_OFF_new
 
+
+# ====================> REmarques ====================
 """
 Remarque: On manque de recule.
     Pour les choix de constante notamment k1 et k2.
@@ -418,7 +427,6 @@ Fais:
         * mauvais chois des constantes
         * inssufissance de tests pour avoir assez de recule; (il faur traiter au moins 10 à frame successif).
 """
-
 
 """def resize_image(image, scale_percent):
 
