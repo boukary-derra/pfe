@@ -4,7 +4,7 @@ import numpy as np
 import scipy.ndimage as ndimage
 import os
 
-#"""
+
 frame = cv2.imread("media/simple_frames/frame_0063.jpg")
 last_frame = cv2.imread("media/simple_frames/frame_0062.jpg")
 
@@ -14,43 +14,25 @@ frame = cv2.imread("media/complex_frames/frame_0063.jpg")
 last_frame = cv2.imread("media/complex_frames/frame_0062.jpg")
 """
 
-def show_output(output, name=''):
-    file = os.path.join("result", 'result.jpg')
-
-    print("\n============================ " + name + " ===============================\n ")
-    print(output)
-
-    # output = n_to_width(output, 1920)
-    cv2.imshow(name, output)
-    cv2.imwrite(file, output)
-
 
 model = STMD(frame, last_frame)
-# lmc = model.get_lmc()
-# lmc = model.convert_for_display(lmc)
-
-output = model.get_lmc()
-output = model.convert_for_display(output)
-
-"""
-on, off = model.get_sigma()
-on_conv = model.convert_for_display(on)
-off_conv = model.convert_for_display(off)
-# print(output)
-show_output(on, "on")
-show_output(on_conv, "on conv")
-show_output(off, "off")
-show_output(off_conv, "off conv")
-"""
-show_output(output, "lipetz transformation output")
+model.show_photoreceptor()
+model.show_lipetz_transformation()
+model.show_low_pass_filter()
+model.show_lmc()
+model.show_on_off_channels()
+model.show_fdsr()
+model.show_sigma()
+model.show_hwr()
+# model.show_li()
+# model.show_delay()
+# model.show_final_output()
 
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 
 
 #show_output(test_image, "test ttt output")
-
-
 
 
 """

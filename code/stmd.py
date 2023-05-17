@@ -3,11 +3,14 @@
 # ===== last updated: 09-05-2023 ======
 
 # Modules
+import os
+import matplotlib.pyplot as plt
+from scipy.ndimage import convolve
+from scipy.signal import convolve2d
 import numpy as np
 import itertools
 import cv2
-import matplotlib.pyplot as plt
-from scipy.signal import convolve2d
+
 
 
 # class STMD
@@ -44,6 +47,7 @@ class STMD:
         self.search_range = 8
         self.p, self.q = 8, 8  # line height and column width of the kernel H
         self.a = 1
+        self.fdsr_gaussian_kernel = (11, 11)
 
 
     def get_gaussian_kernel(self):
@@ -68,6 +72,19 @@ class STMD:
     """ ================= Retina Layer ========================="""
     def get_photoreceptor(self):
         """ Blur effect """
+        gaussian_kernel = self.get_gaussian_kernel()
+
+        try:
+            # Apply the gaussian filter to the frame
+            buffer_frame = convolve(self.frame, gaussian_kernel, mode='constant')
+            return buffer_frame
+
+        except Exception as e:
+            print("Error in Retina layer / photoreceptor :", e)
+            return None
+
+    """def get_photoreceptor(self):
+        # Blur effect
         # input frame size (m: with, n: height)
         gaussian_kernel = self.get_gaussian_kernel()
         (m, n) = self.frame.shape
@@ -92,9 +109,11 @@ class STMD:
             l = buffer_frame
 
         except Exception as e:
-            photoreceptor = None
+            l = None
             print("Error in Retina layer / photoreceptor :", e)
         return l
+
+    from scipy.ndimage import convolve"""
 
     def get_lipetz_transformation(self):
         """ transform the input luminance to membrane potential """
@@ -110,6 +129,7 @@ class STMD:
 
         # transformed image
         p = np.divide(numerator, denominator)
+
 
         return p
 
@@ -148,9 +168,39 @@ class STMD:
             y_on, y_off = None, None
         return y_on, y_off
 
+
     def get_fdsr(self):
         """ The FDSR mechanism is able to suppress rapidly changed texture
-            information and enhance noval contrast change """
+            information and enhance novel contrast change """
+        y_on, y_off = self.get_on_off_channels()
+        pre_y_on, pre_y_off = STMD(self.last_frame).get_on_off_channels()
+        # pre_y_on, pre_y_off = self.get_previous_on_off_channels()
+
+        if (y_on is not None) and (y_off is not None):
+            try:
+                s_on = np.zeros_like(y_on, dtype=np.float32)
+                s_off = np.zeros_like(y_off, dtype=np.float32)
+
+                # Apply Gaussian blur
+                blurred_y_on_fast = cv2.GaussianBlur(y_on, self.fdsr_gaussian_kernel, sigmaX=self.tau_fast, sigmaY=self.tau_fast)
+                blurred_y_on_slow = cv2.GaussianBlur(y_on, self.fdsr_gaussian_kernel, sigmaX=self.tau_slow, sigmaY=self.tau_slow)
+                blurred_y_off_fast = cv2.GaussianBlur(y_off, self.fdsr_gaussian_kernel, sigmaX=self.tau_fast, sigmaY=self.tau_fast)
+                blurred_y_off_slow = cv2.GaussianBlur(y_off, self.fdsr_gaussian_kernel, sigmaX=self.tau_slow, sigmaY=self.tau_slow)
+
+                s_on = np.where(y_on > pre_y_on, blurred_y_on_fast, blurred_y_on_slow)
+                s_off = np.where(y_off > pre_y_off, blurred_y_off_fast, blurred_y_off_slow)
+
+            except Exception as e:
+                s_on = None
+                s_off = None
+                print("ERROR in FDSR", e)
+        else:
+            raise ValueError("ERROR in FDSR: Y_ON, Y_OFF are empty")
+
+        return s_on, s_off
+
+
+    """def get_fdsr(self):
         y_on, y_off = self.get_on_off_channels()
         pre_y_on, pre_y_off = STMD(self.last_frame).get_on_off_channels()
 
@@ -191,7 +241,7 @@ class STMD:
         else:
             raise ValueError("ERROR in FDSR: Y_ON, Y_OFF are empty")
 
-        return s_on, s_off
+        return s_on, s_off"""
 
     def get_sigma(self): # ***
         """ Subtract the filtered signal (s_on, s_off) to the original one
@@ -199,11 +249,11 @@ class STMD:
         s_on, s_off = self.get_fdsr()
         y_on, y_off = self.get_on_off_channels()
 
-        """y_on = self.convert_for_display(y_on)
-        y_off = self.convert_for_display(y_off)
+        y_on=y_on.astype(np.float32)
+        y_off=y_off.astype(np.float32)
 
-        s_on = self.convert_for_display(s_on)
-        s_off = self.convert_for_display(s_off)"""
+        s_on=s_on.astype(np.float32)
+        s_off=s_off.astype(np.float32)
 
         if (s_on is not None) and (y_on is not None):
             f_on = cv2.subtract(y_on, s_on)
@@ -215,16 +265,17 @@ class STMD:
 
     def get_hwr(self):
         """ Then we replace all the pixels that are negative with 0. """
-        # f_on, f_off = self.get_sigma()
-        f_on, f_off = self.get_fdsr()
-        f_on = self.convert_for_display(f_on)
-        f_off = self.convert_for_display(f_off)
+        f_on, f_off = self.get_sigma()
+
         # ======> HW-R ======
         if f_on is not None:
-            f_on = get_max(f_on)
-            f_off = get_max(f_off)
+            f_on = max_with_zero(f_on)
+            f_off = max_with_zero(f_off)
         else:
             raise ValueError("ERROR in HW-R: F_ON, F_OFF are empty")
+
+        """f_on=f_on.astype(np.float32)
+        f_off=f_off.astype(np.float32)"""
         return f_on, f_off
 
 
@@ -250,8 +301,12 @@ class STMD:
 
         # calculate w
         w = calculate_w(u_c, v_c)
-        f_on_li = self.k1 * f_on + self.k2 * f_on * w
-        f_off_li = self.k1 * f_off + self.k2 * f_off * w
+        w_resized = cv2.resize(w, (f_on.shape[1], f_on.shape[0]))
+
+        # f_on_li = self.k1 * f_on + self.k2 * f_on * w
+        # f_off_li = self.k1 * f_off + self.k2 * f_off * w
+        f_on_li = self.k1 * f_on + self.k2 * f_on * w_resized
+        f_off_li = self.k1 * f_off + self.k2 * f_off * w_resized
 
         return f_on_li, f_off_li
 
@@ -283,17 +338,85 @@ class STMD:
         # Convert frame to Gray
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # Convert the image to float32 to prevent overflow
-        frame = frame.astype(np.float32) / 255.0
+        # frame = frame.astype(np.float32) / 255.0
+        frame = frame.astype(np.float32)
         return frame
 
     def convert_for_display(self, frame):
         """ Prepare frame for display """
         # Convert the image back to the original range (0-255)
-        frame = (frame * 255).astype(np.uint8)
+        # frame = (frame * 255).astype(np.uint8)
         #input = cv2.resize(input, (self.width, self.height), interpolation=cv2.INTER_AREA)
-        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        # frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
         return frame
 
+
+    # ====================> Show methods <====================
+    def show_photoreceptor(self):
+        show_output(self.get_photoreceptor(), "1_photoreceptor")
+
+    def show_lipetz_transformation(self):
+        output = self.get_lipetz_transformation()
+        output = (output * 255).astype(np.uint8)
+        show_output(output, "2_lipetz_transformation")
+
+    def show_low_pass_filter(self):
+        output = self.get_low_pass_filter()
+        output = (output * 255).astype(np.uint8)
+        show_output(output, "3_low pass filter")
+
+    def show_lmc(self):
+        output = self.get_lmc()
+        output = (output * 255).astype(np.uint8)
+        # output = normalize_image(output)
+        show_output(output, "4_lmc")
+
+    def show_on_off_channels(self):
+        on, off = self.get_on_off_channels()
+        on = (on * 255).astype(np.uint8)
+        off = (off * 255).astype(np.uint8)
+        show_output(on, "5_on_chanel")
+        show_output(off, "5_off_channel")
+
+    def show_fdsr(self):
+        on, off = self.get_fdsr()
+        on = (on * 255).astype(np.uint8)
+        off = (off * 255).astype(np.uint8)
+        show_output(on, "6_on_fdsr")
+        show_output(off, "6_off_fdsr")
+
+    def show_sigma(self):
+        on, off = self.get_sigma()
+        on = (on * 255).astype(np.uint8)
+        off = (off * 255).astype(np.uint8)
+        show_output(on, "7_on_sigma")
+        show_output(off, "7_off_sigma")
+
+    def show_hwr(self):
+        on, off = self.get_hwr()
+        on = normalize_image(on)
+        off = normalize_image(off)
+        show_output(on, "8_on_hwr")
+        show_output(off, "8_off_hwr")
+
+    def show_li(self):
+        on, off = self.get_li()
+        on = normalize_image(on)
+        off = normalize_image(off)
+        show_output(on, "9_on_li")
+        show_output(off, "9_off_li")
+
+    def show_delay(self):
+        on, off = self.get_delay()
+        on = normalize_image(on)
+        off = normalize_image(off)
+        show_output(on, "10_on_delay")
+        show_output(off, "10_off_delay")
+
+    def show_final_output(self):
+        output = self.get_final_output()
+        output = normalize_image(output)
+        show_output(output, "11.final_output")
 
 # ====================> Functions <====================
 def low_pass_filter(image, tau):
@@ -319,17 +442,63 @@ def get_max(img):
 
     return max_image
 
+def max_with_zero(image):
+    # Create a zero matrix with the same shape as the input image
+    zero_matrix = np.zeros_like(image)
+
+    # Get the maximum between 0 and each pixel value of the image
+    max_image = cv2.max(image, zero_matrix)
+
+    return max_image
+
 
 # ====================> Fonctions for LI ====================
 def calculate_sad(block1, block2):
     """ Sum of absolute differences between two block
             or (the matching criteria) -> equayion [6] """
+    block2 = cv2.cvtColor(block2, cv2.COLOR_BGR2GRAY)
     sad =  np.sum(np.abs(block1 - block2))
     return sad
 
-def find_optimal_motion_vector(current_block, last_frame, i, j, search_range):
-    """ To calculate the translation vector (namely the motion vector)
-            that minimizes the motion criteria -> equation [17]        """
+
+def reduce_resolution(image, factor):
+    """Reduce the resolution of an image by a given factor."""
+    if factor > min(image.shape[0], image.shape[1]):
+        factor = min(image.shape[0], image.shape[1])
+    return cv2.resize(image, (max(1, image.shape[1] // factor), max(1, image.shape[0] // factor)), interpolation=cv2.INTER_AREA)
+
+
+def find_optimal_motion_vector(current_block, last_frame, i, j, search_range, levels=3):
+    """Find the optimal motion vector using hierarchical search."""
+    min_sad = float('inf')
+    optimal_motion_vector = (0, 0)
+
+    block_height, block_width = current_block.shape
+
+    for level in range(levels, 0, -1):
+        reduced_current_block = reduce_resolution(current_block, 2**level)
+        reduced_last_frame = reduce_resolution(last_frame, 2**level)
+        reduced_i = i // 2**level
+        reduced_j = j // 2**level
+        reduced_search_range = search_range // 2**level
+
+        for u in range(-reduced_search_range, reduced_search_range + 1):
+            for v in range(-reduced_search_range, reduced_search_range + 1):
+                shifted_i = np.clip(reduced_i + u, 0, reduced_last_frame.shape[0] - reduced_current_block.shape[0])
+                shifted_j = np.clip(reduced_j + v, 0, reduced_last_frame.shape[1] - reduced_current_block.shape[1])
+                shifted_block = reduced_last_frame[shifted_i:shifted_i + reduced_current_block.shape[0], shifted_j:shifted_j + reduced_current_block.shape[1]]
+                sad = calculate_sad(reduced_current_block, shifted_block)
+
+                if sad < min_sad:
+                    min_sad = sad
+                    optimal_motion_vector = (u * 2**level, v * 2**level)
+
+    return optimal_motion_vector
+
+
+"""def find_optimal_motion_vector(current_block, last_frame, i, j, search_range):
+    # To calculate the translation vector (namely the motion vector)
+            # that minimizes the motion criteria -> equation [17]
     min_sad = float('inf')
     optimal_motion_vector = (0, 0)
 
@@ -346,7 +515,9 @@ def find_optimal_motion_vector(current_block, last_frame, i, j, search_range):
                 min_sad = sad
                 optimal_motion_vector = (u, v)
 
-    return optimal_motion_vector
+    return optimal_motion_vector"""
+
+
 
 def block_based_motion_estimation(current_frame, last_frame, block_size, search_range):
     """ This code divides the current frame into blocks of a given size and
@@ -439,3 +610,29 @@ Fais:
     image = cv2.resize(image, new_dimensions, interpolation=cv2.INTER_AREA)
 
     return image"""
+
+def show_output(output, name=''):
+    file = os.path.join("result", name+'_result.jpg')
+
+    print("\n============================ " + name + " ===============================\n ")
+    print(output)
+
+    # output = n_to_width(output, 1920)
+    # cv2.imshow(name, output)
+    cv2.imwrite(file, output)
+
+def normalize_image(img):
+    # Find the minimum and maximum values in the image
+    min_val = np.min(img)
+    max_val = np.max(img)
+
+    # Normalize the image so its values range from 0 to 1
+    img_normalized = (img - min_val) / (max_val - min_val)
+
+    # Convert to uint8
+    img_uint8 = (img_normalized * 255).astype(np.uint8)
+
+    # Convert to BGR
+    # output = cv2.cvtColor(img_uint8, cv2.COLOR_GRAY2BGR)
+
+    return img_uint8
