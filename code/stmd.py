@@ -39,15 +39,15 @@ class STMD:
         self.lmc_tau = 3
         self.tau_fast = 5
         self.tau_slow = 15
+        self.fdsr_gaussian_kernel = (11, 11)
         self.tau_delay = 3
 
         # ======> LI constants ======
         self.k1, self.k2 = 2, 2
-        self.block_size = 1
+        self.block_size = 64
         self.search_range = 8
         self.p, self.q = 8, 8  # line height and column width of the kernel H
         self.a = 1
-        self.fdsr_gaussian_kernel = (11, 11)
 
 
     def get_gaussian_kernel(self):
@@ -178,8 +178,8 @@ class STMD:
 
         if (y_on is not None) and (y_off is not None):
             try:
-                s_on = np.zeros_like(y_on, dtype=np.float32)
-                s_off = np.zeros_like(y_off, dtype=np.float32)
+                s_on = np.zeros_like(y_on, dtype=np.float64)
+                s_off = np.zeros_like(y_off, dtype=np.float64)
 
                 # Apply Gaussian blur
                 blurred_y_on_fast = cv2.GaussianBlur(y_on, self.fdsr_gaussian_kernel, sigmaX=self.tau_fast, sigmaY=self.tau_fast)
@@ -248,12 +248,6 @@ class STMD:
 			(y_on, y_off) """
         s_on, s_off = self.get_fdsr()
         y_on, y_off = self.get_on_off_channels()
-
-        y_on=y_on.astype(np.float32)
-        y_off=y_off.astype(np.float32)
-
-        s_on=s_on.astype(np.float32)
-        s_off=s_off.astype(np.float32)
 
         if (s_on is not None) and (y_on is not None):
             f_on = cv2.subtract(y_on, s_on)
@@ -329,6 +323,8 @@ class STMD:
             output = None
             raise ValueError("ERROR in FINAL OUTPUT: F_ON or F_OFF are empty")
 
+        output = normalize_image(output)
+        # output = cv2.cvtColor(output, cv2.COLOR_GRAY2BGR)
         return output
 
 
@@ -339,7 +335,7 @@ class STMD:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # Convert the image to float32 to prevent overflow
         # frame = frame.astype(np.float32) / 255.0
-        frame = frame.astype(np.float32)
+        frame = frame.astype(np.float64)
         return frame
 
     def convert_for_display(self, frame):
@@ -357,38 +353,46 @@ class STMD:
 
     def show_lipetz_transformation(self):
         output = self.get_lipetz_transformation()
-        output = (output * 255).astype(np.uint8)
+        # output = (output * 255).astype(np.uint8)
+        output = normalize_image(output)
         show_output(output, "2_lipetz_transformation")
 
     def show_low_pass_filter(self):
         output = self.get_low_pass_filter()
-        output = (output * 255).astype(np.uint8)
+        # output = (output * 255).astype(np.uint8)
+        output = normalize_image(output)
         show_output(output, "3_low pass filter")
 
     def show_lmc(self):
         output = self.get_lmc()
-        output = (output * 255).astype(np.uint8)
-        # output = normalize_image(output)
+        # output = (output * 255).astype(np.uint8)
+        output = normalize_image(output)
         show_output(output, "4_lmc")
 
     def show_on_off_channels(self):
         on, off = self.get_on_off_channels()
-        on = (on * 255).astype(np.uint8)
-        off = (off * 255).astype(np.uint8)
+        # on = (on * 255).astype(np.uint8)
+        # off = (off * 255).astype(np.uint8)
+        on = normalize_image(on)
+        off = normalize_image(off)
         show_output(on, "5_on_chanel")
         show_output(off, "5_off_channel")
 
     def show_fdsr(self):
         on, off = self.get_fdsr()
-        on = (on * 255).astype(np.uint8)
-        off = (off * 255).astype(np.uint8)
+        """on = (on * 255).astype(np.uint8)
+        off = (off * 255).astype(np.uint8)"""
+        on = normalize_image(on)
+        off = normalize_image(off)
         show_output(on, "6_on_fdsr")
         show_output(off, "6_off_fdsr")
 
     def show_sigma(self):
         on, off = self.get_sigma()
-        on = (on * 255).astype(np.uint8)
-        off = (off * 255).astype(np.uint8)
+        """on = (on * 255).astype(np.uint8)
+        off = (off * 255).astype(np.uint8)"""
+        on = normalize_image(on)
+        off = normalize_image(off)
         show_output(on, "7_on_sigma")
         show_output(off, "7_off_sigma")
 
@@ -415,7 +419,6 @@ class STMD:
 
     def show_final_output(self):
         output = self.get_final_output()
-        output = normalize_image(output)
         show_output(output, "11.final_output")
 
 # ====================> Functions <====================
@@ -622,12 +625,17 @@ def show_output(output, name=''):
     cv2.imwrite(file, output)
 
 def normalize_image(img):
+    # epsilon = 1e-6
     # Find the minimum and maximum values in the image
     min_val = np.min(img)
     max_val = np.max(img)
 
     # Normalize the image so its values range from 0 to 1
-    img_normalized = (img - min_val) / (max_val - min_val)
+    if max_val != min_val:
+        img_normalized = (img - min_val) / ((max_val - min_val))
+    else:
+        img_normalized = np.zeros_like(img, dtype=np.float64)
+
 
     # Convert to uint8
     img_uint8 = (img_normalized * 255).astype(np.uint8)

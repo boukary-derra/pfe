@@ -6,7 +6,7 @@ import datetime
 import cv2
 
 # Open the video file
-video_path = "media/complexe_short.mp4"
+video_path = "media/complex_frames/video.mp4"
 cap = cv2.VideoCapture(video_path)
 print("=============================== PROGRAM START")
 
@@ -17,8 +17,8 @@ height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 fps = int(cap.get(cv2.CAP_PROP_FPS))
 frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 channels = 3
-lmc = None
-limit_frame = None
+frame = None
+limit_frame = 10
 
 if (limit_frame is not None) and (limit_frame < frame_count):
     frame_count = limit_frame
@@ -37,13 +37,13 @@ out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 while True:
     frame_num += 1
     print("--- frame {} / {} ---".format(frame_num, frame_count))
-    frame_file = os.path.join("result", f'frame_{frame_num:04d}.jpg')
+    frame_file = os.path.join("result/frames", f'frame_{frame_num:04d}.jpg')
 
 
-    if lmc is None:
-        pre_lmc = None
+    if frame is None:
+        last_frame = None
     else:
-        pre_lmc = lmc
+        last_frame = frame
 
     # Read the next frame
     ret, frame = cap.read()
@@ -55,20 +55,14 @@ while True:
     # cv2.imwrite(frame_normal, frame)
 
     # Write the frame to the output video
-    model = STMD(frame)
-    lmc = model.lmc_output
-    if (pre_lmc is not None):
-        output = model.get_stmd(lmc, pre_lmc)
-    else:
-        output = None
+    if (last_frame is not None) and (frame is not None):
+        model = STMD(frame, last_frame)
+        output = model.get_final_output()
+        # cv2.putText(output, "Date: " + str( datetime.datetime.now()), (50,50),
+                        # cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 1)
 
-    if output is not None:
-        output = model.convert_for_display(output)
-        cv2.putText(output, "Date: " + str( datetime.datetime.now()), (50,50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 1)
-
-        # cv2.imwrite(frame_file, frame_for_display)
-        out.write(output)
+        cv2.imwrite(frame_file, output)
+         #out.write(output)
         # cv2.imshow('Frame', stmd_frame)
 
         # cv2.imshow('Frame', std_frame)

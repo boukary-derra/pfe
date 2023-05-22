@@ -4,7 +4,7 @@ import numpy as np
 import scipy.ndimage as ndimage
 import os
 
-
+"""
 frame = cv2.imread("media/simple_frames/frame_0063.jpg")
 last_frame = cv2.imread("media/simple_frames/frame_0062.jpg")
 
@@ -12,7 +12,6 @@ last_frame = cv2.imread("media/simple_frames/frame_0062.jpg")
 
 frame = cv2.imread("media/complex_frames/frame_0063.jpg")
 last_frame = cv2.imread("media/complex_frames/frame_0062.jpg")
-"""
 
 
 model = STMD(frame, last_frame)
@@ -24,7 +23,7 @@ model.show_on_off_channels()
 model.show_fdsr()
 model.show_sigma()
 model.show_hwr()
-# model.show_li()
+model.show_li()
 # model.show_delay()
 # model.show_final_output()
 
