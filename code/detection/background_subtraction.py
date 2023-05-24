@@ -51,7 +51,8 @@ while True:
 
     #cv2.imshow('Original', frame)
     #cv2.imshow('Foreground', fgmask)
-    cv2.imwrite(frame_file, frame)
+    # cv2.imwrite(frame_file, frame)
+    cv2.imwrite(frame_file, fgmask)
 
     k = cv2.waitKey(30) & 0xff
     if k == 27:  # 'ESC' pour quitter

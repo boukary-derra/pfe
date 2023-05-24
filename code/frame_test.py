@@ -4,28 +4,32 @@ import numpy as np
 import scipy.ndimage as ndimage
 import os
 
-"""
+
 frame = cv2.imread("media/simple_frames/frame_0063.jpg")
 last_frame = cv2.imread("media/simple_frames/frame_0062.jpg")
 
 """
 
-frame = cv2.imread("media/complex_frames/frame_0063.jpg")
-last_frame = cv2.imread("media/complex_frames/frame_0062.jpg")
-
+frame = cv2.imread("media/complex_frames/frame_0065.jpg")
+last_frame = cv2.imread("media/complex_frames/frame_0060.jpg")
+"""
 
 model = STMD(frame, last_frame)
 model.show_photoreceptor()
 model.show_lipetz_transformation()
 model.show_low_pass_filter()
 model.show_lmc()
-model.show_on_off_channels()
+
+"""model.show_on_off_channels()
 model.show_fdsr()
 model.show_sigma()
 model.show_hwr()
+model.show_motion_vector_matrix()
+model.show_velocity_difference()
+model.show_w()"""
 model.show_li()
-# model.show_delay()
-# model.show_final_output()
+model.show_delay()
+model.show_final_output()
 
 cv2.waitKey(0)
 cv2.destroyAllWindows()

@@ -38,7 +38,8 @@ while True:
         cv2.rectangle(frame1, (x, y), (x+w, y+h), (0, 255, 0), 2)
 
     # cv2.imshow("feed", frame1)
-    cv2.imwrite(frame_file, frame1)
+    # cv2.imwrite(frame_file, frame1)
+    cv2.imwrite(frame_file, dilated)
 
     frame1 = frame2
     ret, frame2 = cap.read()

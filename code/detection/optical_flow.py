@@ -3,7 +3,15 @@ import cv2
 import numpy as np
 
 cap = cv2.VideoCapture('media/video.mp4')
+if not cap.isOpened():
+    print("Error opening video file")
+    exit()
+
 ret, frame1 = cap.read()
+if not ret:
+    print("Error reading first frame")
+    exit()
+
 prvs = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
 
 frame_num = 0
@@ -11,24 +19,21 @@ while(1):
     frame_num += 1
     frame_file = os.path.join("result/optical_flow", f'frame_{frame_num:04d}.jpg')
     ret, frame2 = cap.read()
+    if not ret:
+        break  # End of video, exit loop
+
     next = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
 
     flow = cv2.calcOpticalFlowFarneback(prvs, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
 
-    h, w = flow.shape[:2]
-    fx, fy = flow[:,:,0], flow[:,:,1]
-    ang = np.arctan2(fy, fx) + np.pi
-    v = np.sqrt(fx*fx+fy*fy)
-    hsv = np.zeros((h, w, 3), dtype=np.uint8)
-    hsv[...,0] = ang*(180/np.pi/2)
-    hsv[...,1] = 255
-    hsv[...,2] = np.minimum(v*4, 255)
-    bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-    draw = cv2.add(frame2, bgr)
+    # Compute magnitude and angle of 2D vectors
+    mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
 
-    # cv2.imshow('frame2', draw)
-    cv2.imwrite(frame_file, draw)
-    if cv2.waitKey(1) == ord('q'): break
+    # Create mask based on the magnitude with a threshold
+    mask = np.zeros_like(mag)
+    mask[mag > 1.0] = 255  # Set your own threshold
+
+    cv2.imwrite(frame_file, mask)
 
     prvs = next
 

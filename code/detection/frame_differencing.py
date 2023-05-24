@@ -42,7 +42,8 @@ while cap.isOpened():
 
     # Afficher l'image avec les contours
     # cv2.imshow("feed", frame1)
-    cv2.imwrite(frame_file, frame1)
+    # cv2.imwrite(frame_file, frame1)
+    cv2.imwrite(frame_file, dilated)
 
     # Mettre à jour les images de référence
     frame1 = frame2
